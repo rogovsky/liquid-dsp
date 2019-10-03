@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007 - 2017 Joseph Gaeddert
+ * Copyright (c) 2007 - 2019 Joseph Gaeddert
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -50,12 +50,16 @@ struct SPGRAM(_s) {
     FFT_PLAN        fft;            // FFT plan
 
     // psd accumulation
-    T *             psd;                    // accumulated power spectral density estimate (linear)
-    unsigned int    sample_timer;           // countdown to transform
-    uint64_t        num_samples;            // total number of samples since reset
-    uint64_t        num_samples_total;      // total number of samples since start
-    uint64_t        num_transforms;         // total number of transforms since reset
-    uint64_t        num_transforms_total;   // total number of transforms since start
+    T *                 psd;                    // accumulated power spectral density estimate (linear)
+    unsigned int        sample_timer;           // countdown to transform
+    unsigned long long int num_samples;         // total number of samples since reset
+    unsigned long long int num_samples_total;   // total number of samples since start
+    unsigned long long int num_transforms;      // total number of transforms since reset
+    unsigned long long int num_transforms_total;// total number of transforms since start
+
+    // parameters for display purposes only
+    float           frequency;      // center frequency [Hz]
+    float           sample_rate;    // sample rate [Hz]
 };
 
 //
@@ -102,6 +106,8 @@ SPGRAM() SPGRAM(_create)(unsigned int _nfft,
     q->wtype      = _wtype;
     q->window_len = _window_len;
     q->delay      = _delay;
+    q->frequency  =  0;
+    q->sample_rate= -1;
 
     // set object for full accumulation
     SPGRAM(_set_alpha)(q, -1.0f);
@@ -123,14 +129,14 @@ SPGRAM() SPGRAM(_create)(unsigned int _nfft,
     float zeta =  3.0f;
     for (i=0; i<n; i++) {
         switch (q->wtype) {
-        case LIQUID_WINDOW_HAMMING:         q->w[i] = hamming(i,n);         break;
-        case LIQUID_WINDOW_HANN:            q->w[i] = hann(i,n);            break;
-        case LIQUID_WINDOW_BLACKMANHARRIS:  q->w[i] = blackmanharris(i,n);  break;
-        case LIQUID_WINDOW_BLACKMANHARRIS7: q->w[i] = blackmanharris7(i,n); break;
-        case LIQUID_WINDOW_KAISER:          q->w[i] = kaiser(i,n,beta,0);   break;
-        case LIQUID_WINDOW_FLATTOP:         q->w[i] = flattop(i,n);         break;
-        case LIQUID_WINDOW_TRIANGULAR:      q->w[i] = triangular(i,n,n);    break;
-        case LIQUID_WINDOW_RCOSTAPER:       q->w[i] = liquid_rcostaper_windowf(i,n/3,n); break;
+        case LIQUID_WINDOW_HAMMING:         q->w[i] = liquid_hamming(i,n);         break;
+        case LIQUID_WINDOW_HANN:            q->w[i] = liquid_hann(i,n);            break;
+        case LIQUID_WINDOW_BLACKMANHARRIS:  q->w[i] = liquid_blackmanharris(i,n);  break;
+        case LIQUID_WINDOW_BLACKMANHARRIS7: q->w[i] = liquid_blackmanharris7(i,n); break;
+        case LIQUID_WINDOW_KAISER:          q->w[i] = liquid_kaiser(i,n,beta);     break;
+        case LIQUID_WINDOW_FLATTOP:         q->w[i] = liquid_flattop(i,n);         break;
+        case LIQUID_WINDOW_TRIANGULAR:      q->w[i] = liquid_triangular(i,n,n);    break;
+        case LIQUID_WINDOW_RCOSTAPER:       q->w[i] = liquid_rcostaper_window(i,n,n/3); break;
         case LIQUID_WINDOW_KBD:             q->w[i] = liquid_kbd(i,n,zeta); break;
         default:
             fprintf(stderr,"error: spgram%s_create(), invalid window\n", EXTENSION);
@@ -243,6 +249,27 @@ int SPGRAM(_set_alpha)(SPGRAM() _q,
     return 0;
 }
 
+// set center freuqncy
+int SPGRAM(_set_freq)(SPGRAM() _q,
+                      float    _freq)
+{
+    _q->frequency = _freq;
+    return 0;
+}
+
+// set sample rate
+int SPGRAM(_set_rate)(SPGRAM() _q,
+                      float    _rate)
+{
+    // validate input
+    if (_rate <= 0.0f) {
+        fprintf(stderr,"error: spgram%s_set_rate(), sample rate must be greater than zero\n", EXTENSION);
+        return -1;
+    }
+    _q->sample_rate = _rate;
+    return 0;
+}
+
 // get FFT size
 unsigned int SPGRAM(_get_nfft)(SPGRAM() _q)
 {
@@ -262,25 +289,25 @@ unsigned int SPGRAM(_get_delay)(SPGRAM() _q)
 }
 
 // get number of samples processed since reset
-uint64_t SPGRAM(_get_num_samples)(SPGRAM() _q)
+unsigned long long int SPGRAM(_get_num_samples)(SPGRAM() _q)
 {
     return _q->num_samples;
 }
 
 // get number of samples processed since start
-uint64_t SPGRAM(_get_num_samples_total)(SPGRAM() _q)
+unsigned long long int SPGRAM(_get_num_samples_total)(SPGRAM() _q)
 {
     return _q->num_samples_total;
 }
 
 // get number of transforms processed since reset
-uint64_t SPGRAM(_get_num_transforms)(SPGRAM() _q)
+unsigned long long int SPGRAM(_get_num_transforms)(SPGRAM() _q)
 {
     return _q->num_transforms;
 }
 
 // get number of transforms processed since start
-uint64_t SPGRAM(_get_num_transforms_total)(SPGRAM() _q)
+unsigned long long int SPGRAM(_get_num_transforms_total)(SPGRAM() _q)
 {
     return _q->num_transforms_total;
 }
@@ -346,6 +373,7 @@ void SPGRAM(_step)(SPGRAM() _q)
     FFT_EXECUTE(_q->fft);
 
     // accumulate output
+    // TODO: vectorize this operation
     for (i=0; i<_q->nfft; i++) {
         T v = crealf( _q->buf_freq[i] * conjf(_q->buf_freq[i]) );
         if (_q->num_transforms == 0)
@@ -372,7 +400,7 @@ void SPGRAM(_get_psd)(SPGRAM() _q,
     // TODO: adjust scale if infinite integration
     for (i=0; i<_q->nfft; i++) {
         unsigned int k = (i + nfft_2) % _q->nfft;
-        _X[i] = 10*log10f(_q->psd[k]+1e-6f) + scale;
+        _X[i] = 10*log10f(_q->psd[k]+1e-12f) + scale;
     }
 }
 
@@ -392,16 +420,27 @@ int SPGRAM(_export_gnuplot)(SPGRAM()     _q,
     fprintf(fid,"reset\n");
     fprintf(fid,"set terminal png size 1200,800 enhanced font 'Verdana,10'\n");
     fprintf(fid,"set output '%s.png'\n", _filename);
-    fprintf(fid,"set xrange [-0.5:0.5]\n");
     fprintf(fid,"set autoscale y\n");
-    fprintf(fid,"set xlabel 'Noramlized Frequency'\n");
     fprintf(fid,"set ylabel 'Power Spectral Density'\n");
     fprintf(fid,"set style line 12 lc rgb '#404040' lt 0 lw 1\n");
     fprintf(fid,"set grid xtics ytics\n");
     fprintf(fid,"set grid front ls 12\n");
-    fprintf(fid,"set style fill transparent solid 0.2\n");
+    //fprintf(fid,"set style fill transparent solid 0.2\n");
+    const char plot_with[] = "lines"; // "filledcurves x1"
     fprintf(fid,"set nokey\n");
-    fprintf(fid,"plot '-' w filledcurves x1 lt 1 lw 2 lc rgb '#004080'\n");
+    if (_q->sample_rate < 0) {
+        fprintf(fid,"set xrange [-0.5:0.5]\n");
+        fprintf(fid,"set xlabel 'Noramlized Frequency'\n");
+        fprintf(fid,"plot '-' w %s lt 1 lw 2 lc rgb '#004080'\n", plot_with);
+    } else {
+        char unit = ' ';
+        float g   = 1.0f;
+        liquid_get_scale(_q->frequency, &unit, &g);
+        fprintf(fid,"set xlabel 'Frequency [%cHz]'\n", unit);
+        fprintf(fid,"set xrange [%f:%f]\n", g*(_q->frequency-0.5*_q->sample_rate), g*(_q->frequency+0.5*_q->sample_rate));
+        fprintf(fid,"plot '-' u ($1*%f+%f):2 w %s lt 1 lw 2 lc rgb '#004080'\n",
+                g*(_q->sample_rate < 0 ? 1 : _q->sample_rate), g*_q->frequency, plot_with);
+    }
 
     // export spectrum data
     T * psd = (T*) malloc(_q->nfft * sizeof(T));

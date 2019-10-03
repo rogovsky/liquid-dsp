@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007 - 2015 Joseph Gaeddert
+ * Copyright (c) 2007 - 2019 Joseph Gaeddert
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -271,13 +271,64 @@ void liquid_firdes_kaiser(unsigned int _n,
         h1 = sincf(2.0f*_fc*t);
 
         // kaiser window
-        h2 = kaiser(i,_n,beta,_mu);
+        h2 = liquid_kaiser(i,_n,beta);
 
         //printf("t = %f, h1 = %f, h2 = %f\n", t, h1, h2);
 
         // composite
         _h[i] = h1*h2;
     }
+}
+
+// Design finite impulse response notch filter
+//  _m      : filter semi-length, m in [1,1000]
+//  _f0     : filter notch frequency (normalized), -0.5 <= _fc <= 0.5
+//  _As     : stop-band attenuation [dB], _As > 0
+//  _h      : output coefficient buffer, [size: 2*_m+1 x 1]
+void liquid_firdes_notch(unsigned int _m,
+                         float        _f0,
+                         float        _As,
+                         float *      _h)
+{
+    // validate inputs
+    if (_m < 1 || _m > 1000) {
+        fprintf(stderr,"error: liquid_firdes_notch(), _m (%12u) out of range [1,1000]\n", _m);
+        exit(1);
+    } else if (_f0 < -0.5f || _f0 > 0.5f) {
+        fprintf(stderr,"error: liquid_firdes_notch(), notch frequency (%12.4e) must be in [-0.5,0.5]\n", _f0);
+        exit(1);
+    } else if (_As <= 0.0f) {
+        fprintf(stderr,"error: liquid_firdes_notch(), stop-band suppression (%12.4e) must be greater than zero\n", _As);
+        exit(1);
+    }
+
+    // choose kaiser beta parameter (approximate)
+    float beta = kaiser_beta_As(_As);
+
+    // design filter
+    unsigned int h_len = 2*_m+1;
+    unsigned int i;
+    float scale = 0.0f;
+    for (i=0; i<h_len; i++) {
+        // tone at carrier frequency
+        float p = -cosf(2.0f*M_PI*_f0*((float)(i) - (float)_m));
+
+        // window
+        float w = liquid_kaiser(i,h_len,beta);
+
+        // save un-normalized filter
+        _h[i] = p*w;
+
+        // accumulate scale
+        scale += _h[i] * p;
+    }
+
+    // normalize
+    for (i=0; i<h_len; i++)
+        _h[i] /= scale;
+
+    // add impulse
+    _h[_m] += 1.0f;
 }
 
 // Design (root-)Nyquist filter from prototype
@@ -396,7 +447,7 @@ void liquid_firdes_doppler(unsigned int _n,
         r = 1.5*_K/(_K+1)*cosf(2*M_PI*_fd*t*cosf(_theta));
 
         // Window
-        w = kaiser(i, _n, beta, 0);
+        w = liquid_kaiser(i, _n, beta);
 
         // composite
         _h[i] = (J+r)*w;

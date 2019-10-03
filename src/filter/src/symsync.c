@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007 - 2015 Joseph Gaeddert
+ * Copyright (c) 2007 - 2018 Joseph Gaeddert
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -126,14 +126,14 @@ SYMSYNC() SYMSYNC(_create)(unsigned int _k,
     if (_k < 2) {
         fprintf(stderr,"error: symsync_%s_create(), input sample rate must be at least 2\n", EXTENSION_FULL);
         exit(1);
+    } else if (_M == 0) {
+        fprintf(stderr,"error: symsync_%s_create(), number of filter banks must be greater than zero\n", EXTENSION_FULL);
+        exit(1);
     } else if (_h_len == 0) {
         fprintf(stderr,"error: symsync_%s_create(), filter length must be greater than zero\n", EXTENSION_FULL);
         exit(1);
     } else if ( (_h_len-1) % _M ) {
         fprintf(stderr,"error: symsync_%s_create(), filter length must be of the form: h_len = m*_k*_M + 1 \n", EXTENSION_FULL);
-        exit(1);
-    } else if (_M == 0) {
-        fprintf(stderr,"error: symsync_%s_create(), number of filter banks must be greater than zero\n", EXTENSION_FULL);
         exit(1);
     }
 
@@ -200,7 +200,7 @@ SYMSYNC() SYMSYNC(_create)(unsigned int _k,
 }
 
 // create square-root Nyquist symbol synchronizer
-//  _type   : filter type (e.g. LIQUID_RNYQUIST_RRC)
+//  _type   : filter type (e.g. LIQUID_FIRFILT_RRC)
 //  _k      : samples/symbol
 //  _m      : symbol delay
 //  _beta   : rolloff factor (0 < beta <= 1)
@@ -220,6 +220,9 @@ SYMSYNC() SYMSYNC(_create_rnyquist)(int          _type,
         exit(1);
     } else if (_beta < 0.0f || _beta > 1.0f) {
         fprintf(stderr,"error: symsync_%s_create_rnyquist(), filter excess bandwidth must be in [0,1]\n", EXTENSION_FULL);
+        exit(1);
+    } else if (_M == 0) {
+        fprintf(stderr,"error: symsync_%s_create_rnyquist(), number of filters in bnak must be greater than zero\n", EXTENSION_FULL);
         exit(1);
     }
 
@@ -260,6 +263,9 @@ SYMSYNC() SYMSYNC(_create_kaiser)(unsigned int _k,
         exit(1);
     } else if (_beta < 0.0f || _beta > 1.0f) {
         fprintf(stderr,"error: symsync_%s_create_kaiser(), filter excess bandwidth must be in [0,1]\n", EXTENSION_FULL);
+        exit(1);
+    } else if (_M == 0) {
+        fprintf(stderr,"error: symsync_%s_create_kaiser(), number of filters in bnak must be greater than zero\n", EXTENSION_FULL);
         exit(1);
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007 - 2017 Joseph Gaeddert
+ * Copyright (c) 2007 - 2019 Joseph Gaeddert
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -1090,15 +1090,12 @@ void bpacketsync_reconfig(bpacketsync _q);
 #define FLEXFRAME_PROTOCOL  (101+PACKETIZER_VERSION)
 
 // header description
-// NOTE: The flexframe header can be improved with crc24, secded7264, v29
-//       which also generates a 54-byte frame. Improves header decoding
-//       by about 1 dB (99% probability of decoding with SNR = -1 dB);
-//       however this requires that the 'libfec' libraries are installed.
-#define FLEXFRAME_H_USER    (14)                    // user-defined array
-#define FLEXFRAME_H_DEC     (FLEXFRAME_H_USER+6)    // decoded length
-#define FLEXFRAME_H_CRC     (LIQUID_CRC_32)         // header CRC
-#define FLEXFRAME_H_FEC0    (LIQUID_FEC_SECDED7264) // header FEC (inner)
-#define FLEXFRAME_H_FEC1    (LIQUID_FEC_HAMMING84)  // header FEC (outer)
+#define FLEXFRAME_H_USER_DEFAULT (14)                    // default length for user-defined array
+#define FLEXFRAME_H_DEC          (6)                     // decoded length
+#define FLEXFRAME_H_CRC          (LIQUID_CRC_32)         // header CRC
+#define FLEXFRAME_H_FEC0         (LIQUID_FEC_SECDED7264) // header FEC (inner)
+#define FLEXFRAME_H_FEC1         (LIQUID_FEC_HAMMING84)  // header FEC (outer)
+#define FLEXFRAME_H_MOD          (LIQUID_MODEM_QPSK)     // modulation scheme
 
 
 // 
@@ -1108,12 +1105,10 @@ void bpacketsync_reconfig(bpacketsync _q);
 #define GMSKFRAME_VERSION (3+PACKETIZER_VERSION)
 
 // header description
-#define GMSKFRAME_H_USER    (8)                     // user-defined array
-#define GMSKFRAME_H_DEC     (GMSKFRAME_H_USER+5)    // decoded length
-#define GMSKFRAME_H_CRC     (LIQUID_CRC_32)         // header CRC
-#define GMSKFRAME_H_FEC     (LIQUID_FEC_HAMMING128) // header FEC
-#define GMSKFRAME_H_ENC     (26)                    // encoded length (bytes)
-#define GMSKFRAME_H_SYM     (208)                   // number of encoded bits
+#define GMSKFRAME_H_USER_DEFAULT   (8)                     // user-defined array
+#define GMSKFRAME_H_DEC            (5)                     // decoded length
+#define GMSKFRAME_H_CRC            (LIQUID_CRC_32)         // header CRC
+#define GMSKFRAME_H_FEC            (LIQUID_FEC_HAMMING128) // header FEC
 
 
 // 
@@ -1123,14 +1118,121 @@ void bpacketsync_reconfig(bpacketsync _q);
 #define OFDMFLEXFRAME_PROTOCOL  (104+PACKETIZER_VERSION)
 
 // header description
-#define OFDMFLEXFRAME_H_USER    (8)                         // user-defined array
-#define OFDMFLEXFRAME_H_DEC     (OFDMFLEXFRAME_H_USER+6)    // decoded length
-#define OFDMFLEXFRAME_H_CRC     (LIQUID_CRC_32)             // header CRC
-#define OFDMFLEXFRAME_H_FEC     (LIQUID_FEC_GOLAY2412)      // header FEC
-#define OFDMFLEXFRAME_H_ENC     (36)                        // encoded length
-#define OFDMFLEXFRAME_H_MOD     (LIQUID_MODEM_BPSK)         // modulation scheme
-#define OFDMFLEXFRAME_H_BPS     (1)                         // modulation depth
-#define OFDMFLEXFRAME_H_SYM     (288)                       // number of symbols
+#define OFDMFLEXFRAME_H_USER_DEFAULT (8)                         // default length for user-defined array
+#define OFDMFLEXFRAME_H_DEC          (6)                         // decoded length
+#define OFDMFLEXFRAME_H_CRC          (LIQUID_CRC_32)             // header CRC
+#define OFDMFLEXFRAME_H_FEC0         (LIQUID_FEC_GOLAY2412)      // header FEC (inner)
+#define OFDMFLEXFRAME_H_FEC1         (LIQUID_FEC_NONE)           // header FEC (outer)
+#define OFDMFLEXFRAME_H_MOD          (LIQUID_MODEM_BPSK)         // modulation scheme
+
+
+//
+// dsssframe
+//
+
+#define DSSSFRAME_PROTOCOL (101 + PACKETIZER_VERSION)
+#define DSSSFRAME_H_USER_DEFAULT (8)
+#define DSSSFRAME_H_DEC          (5)
+#define DSSSFRAME_H_CRC          (LIQUID_CRC_32)
+#define DSSSFRAME_H_FEC0         (LIQUID_FEC_GOLAY2412)
+#define DSSSFRAME_H_FEC1         (LIQUID_FEC_NONE)
+
+//
+// multi-signal source for testing (no meaningful data, just signals)
+//
+#define LIQUID_QSOURCE_MANGLE_CFLOAT(name) LIQUID_CONCAT(qsourcecf,name)
+
+#define LIQUID_QSOURCE_DEFINE_API(QSOURCE,TO)                               \
+                                                                            \
+/* Multi-signal source generator object                                 */  \
+typedef struct QSOURCE(_s) * QSOURCE();                                     \
+                                                                            \
+/* Create default qsource object, type uninitialized                    */  \
+QSOURCE() QSOURCE(_create)(unsigned int _M,                                 \
+                           unsigned int _m,                                 \
+                           float        _As,                                \
+                           float        _fc,                                \
+                           float        _bw,                                \
+                           float        _gain);                             \
+                                                                            \
+/* Initialize user-defined qsource object                               */  \
+void QSOURCE(_init_user)(QSOURCE() _q,                                      \
+                         void *    _userdata,                               \
+                         void *    _callback);                              \
+                                                                            \
+/* Initialize qsource tone object                                       */  \
+void QSOURCE(_init_tone)(QSOURCE() _q);                                     \
+                                                                            \
+/* Add chirp to signal generator, returning id of signal                */  \
+/*  _q          : signal source object                                  */  \
+/*  _duration   : duration of chirp [samples]                           */  \
+/*  _negate     : negate frequency direction                            */  \
+/*  _repeat     : repeat signal? or just run once                       */  \
+void QSOURCE(_init_chirp)(QSOURCE() _q,                                     \
+                          float     _duration,                              \
+                          int       _negate,                                \
+                          int       _repeat);                               \
+                                                                            \
+/* Initialize qsource noise object                                      */  \
+void QSOURCE(_init_noise)(QSOURCE() _q);                                    \
+                                                                            \
+/* Initialize qsource linear modem object                               */  \
+void QSOURCE(_init_modem)(QSOURCE()    _q,                                  \
+                          int          _ms,                                 \
+                          unsigned int _m,                                  \
+                          float        _beta);                              \
+                                                                            \
+/* Initialize frequency-shift keying modem signal source                */  \
+/*  _q      : signal source object                                      */  \
+/*  _m      : bits per symbol, _bps > 0                                 */  \
+/*  _k      : samples/symbol, _k >= 2^_m                                */  \
+void QSOURCE(_init_fsk)(QSOURCE()    _q,                                    \
+                        unsigned int _m,                                    \
+                        unsigned int _k);                                   \
+                                                                            \
+/* Initialize qsource GMSK modem object                                 */  \
+void QSOURCE(_init_gmsk)(QSOURCE()    _q,                                   \
+                         unsigned int _m,                                   \
+                         float        _bt);                                 \
+                                                                            \
+/* Destroy qsource object                                               */  \
+void QSOURCE(_destroy)(QSOURCE() _q);                                       \
+                                                                            \
+/* Print qsource object                                                 */  \
+void QSOURCE(_print)(QSOURCE() _q);                                         \
+                                                                            \
+/* Reset qsource object                                                 */  \
+void QSOURCE(_reset)(QSOURCE() _q);                                         \
+                                                                            \
+/* Get/set source id                                                    */  \
+void QSOURCE(_set_id)(QSOURCE() _q, int _id);                               \
+int  QSOURCE(_get_id)(QSOURCE() _q);                                        \
+                                                                            \
+void QSOURCE(_enable)(QSOURCE() _q);                                        \
+void QSOURCE(_disable)(QSOURCE() _q);                                       \
+                                                                            \
+void QSOURCE(_set_gain)(QSOURCE() _q,                                       \
+                        float     _gain_dB);                                \
+                                                                            \
+float QSOURCE(_get_gain)(QSOURCE() _q);                                     \
+                                                                            \
+/* Get number of samples generated by the object so far                 */  \
+/*  _q      : msource object                                            */  \
+/*  _gain   : signal gain output [dB]                                   */  \
+uint64_t QSOURCE(_get_num_samples)(QSOURCE() _q);                           \
+                                                                            \
+void QSOURCE(_set_frequency)(QSOURCE() _q,                                  \
+                             float     _dphi);                              \
+                                                                            \
+float QSOURCE(_get_frequency)(QSOURCE() _q);                                \
+                                                                            \
+void QSOURCE(_generate)(QSOURCE() _q,                                       \
+                        TO *      _v);                                      \
+                                                                            \
+void QSOURCE(_generate_into)(QSOURCE() _q,                                  \
+                             TO *      _buf);                               \
+    
+LIQUID_QSOURCE_DEFINE_API(LIQUID_QSOURCE_MANGLE_CFLOAT, liquid_float_complex)
 
 //
 // MODULE : math
@@ -1531,6 +1633,21 @@ LIQUID_NCO_DEFINE_INTERNAL_API(LIQUID_NCO_MANGLE_FLOAT,
                                float,
                                float complex)
 
+// Numerically-controlled synthesizer (direct digital synthesis)
+#define LIQUID_SYNTH_DEFINE_INTERNAL_API(SYNTH,T,TC)            \
+                                                                \
+/* constrain phase/frequency to be in [-pi,pi)          */      \
+void SYNTH(_constrain_phase)(SYNTH() _q);                       \
+void SYNTH(_constrain_frequency)(SYNTH() _q);                   \
+void SYNTH(_compute_synth)(SYNTH() _q);                         \
+                                                                \
+/* reset internal phase-locked loop filter              */      \
+void SYNTH(_pll_reset)(SYNTH() _q);                             \
+
+// Define nco internal APIs
+LIQUID_SYNTH_DEFINE_INTERNAL_API(SYNTH_MANGLE_FLOAT,
+                                 float,
+                                 liquid_float_complex)
 // 
 // MODULE : optim (non-linear optimization)
 //
