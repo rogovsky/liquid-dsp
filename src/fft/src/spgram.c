@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007 - 2019 Joseph Gaeddert
+ * Copyright (c) 2007 - 2020 Joseph Gaeddert
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -83,19 +83,19 @@ SPGRAM() SPGRAM(_create)(unsigned int _nfft,
     // validate input
     if (_nfft < 2) {
         fprintf(stderr,"error: spgram%s_create(), fft size must be at least 2\n", EXTENSION);
-        exit(1);
+        return NULL;
     } else if (_window_len > _nfft) {
         fprintf(stderr,"error: spgram%s_create(), window size cannot exceed fft size\n", EXTENSION);
-        exit(1);
+        return NULL;
     } else if (_window_len == 0) {
         fprintf(stderr,"error: spgram%s_create(), window size must be greater than zero\n", EXTENSION);
-        exit(1);
+        return NULL;
     } else if (_wtype == LIQUID_WINDOW_KBD && _window_len % 2) {
         fprintf(stderr,"error: spgram%s_create(), KBD window length must be even\n", EXTENSION);
-        exit(1);
+        return NULL;
     } else if (_delay == 0) {
         fprintf(stderr,"error: spgram%s_create(), delay must be greater than 0\n", EXTENSION);
-        exit(1);
+        return NULL;
     }
 
     // allocate memory for main object
@@ -140,7 +140,8 @@ SPGRAM() SPGRAM(_create)(unsigned int _nfft,
         case LIQUID_WINDOW_KBD:             q->w[i] = liquid_kbd(i,n,zeta); break;
         default:
             fprintf(stderr,"error: spgram%s_create(), invalid window\n", EXTENSION);
-            exit(1);
+            SPGRAM(_destroy)(q);
+            return NULL;
         }
     }
 
@@ -155,8 +156,6 @@ SPGRAM() SPGRAM(_create)(unsigned int _nfft,
         q->w[i] = g * q->w[i];
 
     // reset the spgram object
-    q->num_samples_total    = 0;
-    q->num_transforms_total = 0;
     SPGRAM(_reset)(q);
 
     // return new object
@@ -169,7 +168,7 @@ SPGRAM() SPGRAM(_create_default)(unsigned int _nfft)
     // validate input
     if (_nfft < 2) {
         fprintf(stderr,"error: spgram%s_create_default(), fft size must be at least 2\n", EXTENSION);
-        exit(1);
+        return NULL;
     }
 
     return SPGRAM(_create)(_nfft, LIQUID_WINDOW_KAISER, _nfft/2, _nfft/4);
@@ -178,6 +177,9 @@ SPGRAM() SPGRAM(_create_default)(unsigned int _nfft)
 // destroy spgram object
 void SPGRAM(_destroy)(SPGRAM() _q)
 {
+    if (_q == NULL)
+        return;
+
     // free allocated memory
     free(_q->buf_time);
     free(_q->buf_freq);
@@ -217,6 +219,10 @@ void SPGRAM(_reset)(SPGRAM() _q)
 
     // clear the window buffer
     WINDOW(_reset)(_q->buffer);
+
+    // reset counters
+    _q->num_samples_total    = 0;
+    _q->num_transforms_total = 0;
 }
 
 // prints the spgram object's parameters
@@ -310,6 +316,12 @@ unsigned long long int SPGRAM(_get_num_transforms)(SPGRAM() _q)
 unsigned long long int SPGRAM(_get_num_transforms_total)(SPGRAM() _q)
 {
     return _q->num_transforms_total;
+}
+
+// get forgetting factor (filer bandwidth)
+float SPGRAM(_get_alpha)(SPGRAM() _q)
+{
+    return _q->alpha;
 }
 
 // push a single sample into the spgram object
