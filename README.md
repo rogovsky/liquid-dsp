@@ -140,6 +140,38 @@ following command:
 
     make bench
 
+### C++
+
+Compiling and linking to C++ programs is straightforward.
+Just include `<complex>` before `<liquid/liquid.h>` and use 
+`std::complex<float>` in favor of `float complex`.
+Here is the same example as the one above but in C++ instead of C:
+
+```c++
+// get in, manipulate data, get out
+#include <complex>
+#include <liquid/liquid.h>
+int main() {
+    unsigned int M  = 4;     // interpolation factor
+    unsigned int m  = 12;    // filter delay [symbols]
+    float        As = 60.0f; // filter stop-band attenuation [dB]
+
+    // create interpolator from prototype
+    firinterp_crcf interp = firinterp_crcf_create_kaiser(M,m,As);
+    std::complex<float> x = 1.0f;   // input sample
+    std::complex<float> y[M];       // interpolated output buffer
+
+    // repeat on input sample data as needed
+    {
+        firinterp_crcf_execute(interp, x, y);
+    }
+
+    // destroy interpolator object
+    firinterp_crcf_destroy(interp);
+    return 0;
+}
+```
+
 ## Available Modules ##
 
   * _agc_: automatic gain control, received signal strength
@@ -188,7 +220,7 @@ following command:
 
 liquid projects are released under the X11/MIT license.
 Short version: this code is copyrighted to me (Joseph D. Gaeddert),
-I give you full permission to do wantever you want with it except remove my
+I give you full permission to do whatever you want with it except remove my
 name from the credits.
 Seriously, go nuts.
 See the LICENSE file or

@@ -24,7 +24,7 @@
 
 #include <stdlib.h>
 #include "autotest/autotest.h"
-#include "liquid.h"
+#include "liquid.internal.h"
 
 void testbench_spgramcf_noise(unsigned int _nfft,
                               int          _wtype,
@@ -120,7 +120,21 @@ void testbench_spgramcf_signal(unsigned int _nfft, int _wtype, float _fc, float 
     // verify result
     float psd[_nfft];
     spgramcf_get_psd(q, psd);
-    //for (i=0; i<_nfft; i++) { printf("%6u %8.2f\n", i, psd[i]); }
+#if 0
+    // debug
+    const char filename[] = "testbench_spgramcf_signal.m";
+    FILE * fid = fopen(filename,"w");
+    fprintf(fid,"clear all; close all; nfft=%u; f=[0:(nfft-1)]/nfft-0.5; psd=zeros(1,nfft);\n", _nfft);
+    fprintf(fid,"i0=%u; ns=%u; target=%f; tol=%f; idx=mod(round([1:ns]-1+i0-ns/2),nfft)+1;\n", i0, ns, psd_target, tol);
+    for (i=0; i<_nfft; i++) { fprintf(fid,"psd(%6u) = %8.2f;\n", i+1, psd[i]); }
+    fprintf(fid,"figure; xlabel('f/F_s'); ylabel('PSD [dB]'); hold on;\n");
+    fprintf(fid,"  plot(f(idx),target*ones(1,ns)+tol,'Color',[0.5 0 0]);\n");
+    fprintf(fid,"  plot(f(idx),target*ones(1,ns)-tol,'Color',[0.5 0 0]);\n");
+    fprintf(fid,"  plot(f,psd,'LineWidth',2,'Color',[0 0.3 0.5]);\n");
+    fprintf(fid,"hold off; grid on; axis([-0.5 0.5 %f %f]);\n", noise_floor-5, noise_floor+_SNRdB+5);
+    fclose(fid);
+    printf("debug file written to %s\n", filename);
+#endif
     for (i=0; i<ns; i++) {
         unsigned int index = (i0 + i + _nfft - ns/2) % _nfft;
         CONTEND_DELTA(psd[index], psd_target, tol)
@@ -201,6 +215,10 @@ void autotest_spgramcf_counters()
 
 void autotest_spgramcf_config_errors()
 {
+#if LIQUID_STRICT_EXIT
+    AUTOTEST_WARN("skipping spgram config test with strict exit enabled\n");
+    return;
+#else
     // check that object returns NULL for invalid configurations
     fprintf(stderr,"warning: ignore potential errors here; checking for invalid configurations\n");
     CONTEND_EQUALITY(spgramcf_create(  0, LIQUID_WINDOW_HAMMING,       200, 200)==NULL,1); // nfft too small
@@ -215,6 +233,7 @@ void autotest_spgramcf_config_errors()
     // check that object returns NULL for invalid configurations (default)
     CONTEND_EQUALITY(spgramcf_create_default(0)==NULL,1); // nfft too small
     CONTEND_EQUALITY(spgramcf_create_default(1)==NULL,1); // nfft too small
+#endif
 }
 
 void autotest_spgramcf_standalone()
@@ -244,5 +263,55 @@ void autotest_spgramcf_standalone()
 
     // free memory
     free(buf);
+}
+
+// check spectral periodogram operation where the input size is much shorter
+// than the transform size
+void autotest_spgramcf_short()
+{
+    unsigned int nfft        = 1200;    // transform size
+    unsigned int num_samples =  200;    // number of samples to generate
+    float        noise_floor = -20.0f;
+    float        nstd        = powf(10.0f,noise_floor/20.0f); // noise std. dev.
+
+    float complex * buf = (float complex*)malloc(num_samples*sizeof(float complex));
+    unsigned int i;
+    for (i=0; i<num_samples; i++)
+        buf[i] = 1.0f + nstd*(randnf()+_Complex_I*randnf())*M_SQRT1_2;
+
+    float psd[nfft];
+    spgramcf_estimate_psd(nfft, buf, num_samples, psd);
+
+    // use a very loose upper mask as we have only computed a few hundred samples
+    for (i=0; i<nfft; i++) {
+        float f       = (float)i / (float)nfft - 0.5f;
+        float mask_hi = fabsf(f) < 0.2f ? 15.0f - 30*fabsf(f)/0.2f : -15.0f;
+        if (liquid_autotest_verbose)
+            printf("%6u : f=%6.3f, %8.2f < %8.2f\n", i, f, psd[i], mask_hi);
+        CONTEND_LESS_THAN( psd[i], mask_hi );
+    }
+    // consider lower mask only for DC term
+    float mask_lo = 0.0f;
+    unsigned int nfft_2 = nfft/2;
+    if (liquid_autotest_verbose)
+        printf("    DC : f=%6.3f, %8.2f > %8.2f\n", 0.0f, psd[nfft_2], mask_lo);
+    CONTEND_GREATER_THAN( psd[nfft_2], mask_lo );
+
+    // free memory
+    free(buf);
+}
+
+// check spectral periodogram behavior on null input (zero samples)
+void autotest_spgramcf_null()
+{
+    unsigned int nfft = 1200;   // transform size
+    float psd[nfft];
+    spgramcf_estimate_psd(nfft, NULL, 0, psd);
+
+    // value should be exactly minimum
+    float psd_val = 10*log10f(LIQUID_SPGRAM_PSD_MIN);
+    unsigned int i;
+    for (i=0; i<nfft; i++)
+        CONTEND_EQUALITY(psd[i], psd_val);
 }
 
